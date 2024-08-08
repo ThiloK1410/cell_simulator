@@ -1,8 +1,10 @@
-mod canvas_test;
+
+mod habitat;
 
 use macroquad::prelude::*;
 use macroquad::prelude::KeyCode::Escape;
-use simulation2d_library::noise::NoiseHandler;
+use simulation2d_library::noise::NoiseFlowField;
+use crate::habitat::Habitat;
 
 fn get_config() -> Conf {
     Conf {
@@ -24,26 +26,21 @@ async fn main() {
     let height: usize = 20;
     let spacing = (screen_width()/(width+1) as f32, screen_height()/(height + 1) as f32);
     let line_length = 15f32;
-    let mut noise_handler_x = NoiseHandler::new(
-        width, height, 20f64, 0.001, 1);
-    let mut noise_handler_y = NoiseHandler::new(
-        width, height, 20f64, 0.001, 2);
-    let mut buffer_x;
-    let mut buffer_y;
+    let mut flow_field = NoiseFlowField::new(width, height,20f32, 0.01f32, 1);
+    let mut buffer: &Vec<Vec2>;
 
+    let mut habitat = Habitat::new((1000,100), (100f32, 100f32), 200f32, 200f32);
+    habitat.draw_test();
 
     loop {
-        buffer_x = noise_handler_x.get_next();
-        buffer_y = noise_handler_y.get_next();
+        buffer = flow_field.get_next();
         if is_key_down(Escape) {break};
         clear_background(WHITE);
 
 
         for x in 0..width {
             for y in 0..height {
-                let x_noise = buffer_x[x + y*width] as f32;
-                let y_noise = buffer_y[x + y*width] as f32;
-                let noise_vec = Vec2::new(x_noise, y_noise).normalize_or_zero();
+                let noise_vec = buffer[x + y*width];
                 let (pos_x, pos_y) = (x as f32 * spacing.0 + spacing.0, y as f32 * spacing.1 + spacing.1);
                 draw_line(pos_x, pos_y,
                           pos_x + noise_vec.x * line_length,
