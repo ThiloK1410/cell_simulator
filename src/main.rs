@@ -35,13 +35,15 @@ async fn main() {
 
 
     loop {
-        habitat.draw_test();
+        habitat.draw();
         buffer = flow_field.get_next();
         if is_key_down(Escape) {break}
         if is_key_down(Left) {habitat.move_target(Vec2::new(-1f32, 0f32))}
         if is_key_down(Right) {habitat.move_target(Vec2::new(1f32, 0f32))}
         if is_key_down(Up) {habitat.move_target(Vec2::new(0f32, -1f32))}
         if is_key_down(Down) {habitat.move_target(Vec2::new(0f32, 1f32))}
+        if is_key_down(V) {habitat.zoom(1.02)}
+        if is_key_down(B) {habitat.zoom(0.98)}
         clear_background(WHITE);
         draw_texture_ex(habitat.get_texture(), screen_width() - screen_height() + PADDING, PADDING, WHITE,
         DrawTextureParams {

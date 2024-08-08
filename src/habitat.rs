@@ -27,7 +27,7 @@ impl Habitat {
         }
     }
 
-    pub fn draw_test(&mut self) {
+    pub fn draw(&mut self) {
         set_camera(&Camera2D {
             zoom: self.camera_zoom,
             target: self.camera_target,
@@ -37,7 +37,6 @@ impl Habitat {
 
         clear_background(BLACK);
         draw_rectangle(0f32, 0f32, self.habitat_size.0 as f32, self.habitat_size.1 as f32, BLUE);
-
         draw_line(0f32, 0f32, self.habitat_size.0 as f32, self.habitat_size.1 as f32, 2f32, BLACK);
 
         set_default_camera();
