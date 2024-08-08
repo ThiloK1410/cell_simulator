@@ -2,14 +2,16 @@
 mod habitat;
 
 use macroquad::prelude::*;
-use macroquad::prelude::KeyCode::Escape;
+use macroquad::prelude::KeyCode::*;
 use simulation2d_library::noise::NoiseFlowField;
 use crate::habitat::Habitat;
+
+const PADDING: f32 = 20f32;
 
 fn get_config() -> Conf {
     Conf {
         window_title: "".to_string(),
-        window_width: 500,
+        window_width: 800,
         window_height: 500,
         high_dpi: false,
         fullscreen: false,
@@ -29,15 +31,26 @@ async fn main() {
     let mut flow_field = NoiseFlowField::new(width, height,20f32, 0.01f32, 1);
     let mut buffer: &Vec<Vec2>;
 
-    let mut habitat = Habitat::new((1000,100), (100f32, 100f32), 200f32, 200f32);
-    habitat.draw_test();
+    let mut habitat = Habitat::new((1000,1000));
+
 
     loop {
+        habitat.draw_test();
         buffer = flow_field.get_next();
-        if is_key_down(Escape) {break};
+        if is_key_down(Escape) {break}
+        if is_key_down(Left) {habitat.move_target(Vec2::new(-1f32, 0f32))}
+        if is_key_down(Right) {habitat.move_target(Vec2::new(1f32, 0f32))}
+        if is_key_down(Up) {habitat.move_target(Vec2::new(0f32, -1f32))}
+        if is_key_down(Down) {habitat.move_target(Vec2::new(0f32, 1f32))}
         clear_background(WHITE);
+        draw_texture_ex(habitat.get_texture(), screen_width() - screen_height() + PADDING, PADDING, WHITE,
+        DrawTextureParams {
+            dest_size: Some(Vec2::new(screen_height() - 2f32*PADDING, screen_height() - 2f32*PADDING)),
+            ..Default::default()
+        });
+        draw_rectangle_lines(screen_width() - screen_height() + PADDING, PADDING, screen_height() - 2f32*PADDING, screen_height() - 2f32*PADDING, 10f32, BLACK);
 
-
+/*
         for x in 0..width {
             for y in 0..height {
                 let noise_vec = buffer[x + y*width];
@@ -49,6 +62,8 @@ async fn main() {
                           BLACK);
             }
         }
+*/
+
 
         next_frame().await;
     }
