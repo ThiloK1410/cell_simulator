@@ -1,6 +1,4 @@
-use std::cell::RefCell;
 use std::num::Wrapping;
-use std::rc::Rc;
 use macroquad::camera::{Camera2D, set_camera, set_default_camera};
 use macroquad::color::{BLACK, BLUE};
 use macroquad::math::Vec2;
@@ -10,7 +8,7 @@ use macroquad::texture::render_target;
 use macroquad::window::clear_background;
 use simulation2d_library::noise::NoiseFlowField;
 use crate::cell::Cell;
-use rstar::RTree;
+use rstar::{RTree, RTreeObject};
 
 pub struct Habitat {
     // virtual screen which camera2d will draw to
@@ -22,7 +20,6 @@ pub struct Habitat {
     flow_field: NoiseFlowField,
     flow_field_buffer: Vec<Vec2>,
     pub draw_flow_field_bool: bool,
-    r_tree: RTree<Cell>
 }
 
 impl Habitat {
@@ -39,7 +36,6 @@ impl Habitat {
             flow_field: NoiseFlowField::new((habitat_size.0/30) as usize, (habitat_size.1/30) as usize, 10f32, 0.003, 1),
             flow_field_buffer: Vec::new(),
             draw_flow_field_bool: false,
-            r_tree: RTree::new(),
         }
     }
 
@@ -90,13 +86,15 @@ impl Habitat {
             cell.pos += cell.vel
         }
 
-
+        // populate the r*-tree to minimize collision checks
+        let mut r_tree = RTree::bulk_load(self.cells.iter().collect());
 
         // collision checks between cells
         let mut collision_update: Vec<Vec2> = vec![Vec2::ZERO; self.cells.len()];
         let mut collision_counter: Vec<usize> = vec![0; self.cells.len()];
         for (idx, cell1) in self.cells.iter().enumerate() {
-            for cell2 in self.cells.iter() {
+            // here the tree is used for cell1 proximity
+            for cell2 in r_tree.locate_in_envelope_intersecting(&cell1.envelope()) {
                 let min_dist = cell1.size + cell2.size;
                 let dist_vec = cell2.pos - cell1.pos;
                 let dist = dist_vec.length();

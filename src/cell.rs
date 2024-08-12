@@ -1,6 +1,5 @@
 use macroquad::math::Vec2;
-use rstar::{AABB, Point, PointDistance, RTreeObject};
-use rstar::Envelope;
+use rstar::{AABB, PointDistance, RTreeObject};
 
 pub struct Cell {
     pub pos: Vec2,
@@ -17,14 +16,14 @@ impl Cell {
         }
     }
 }
-impl RTreeObject for Cell {
+impl RTreeObject for &Cell {
     type Envelope = AABB<(f32, f32)>;
 
     fn envelope(&self) -> Self::Envelope {
         AABB::from_corners((self.pos.x-self.size, self.pos.y-self.size), (self.pos.x+self.size, self.pos.y+self.size))
     }
 }
-impl PointDistance for Cell {
+impl PointDistance for &Cell {
     fn distance_2(&self, point: &(f32, f32)) -> f32 {
         let d_x = self.pos.x - point.0;
         let d_y = self.pos.y - point.1;
