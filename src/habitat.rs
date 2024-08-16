@@ -13,13 +13,21 @@ use rstar::{RTree, RTreeObject};
 pub struct Habitat {
     // virtual screen which camera2d will draw to
     render_target: RenderTarget,
-    camera_target: Vec2,
-    camera_zoom: Vec2,
+    // position for center of camera view
+    pub camera_target: Vec2,
+    // the cell currently in focus
+    pub focused_cell_idx: Option<usize>,
+    // holds the focused position, to be mapped to a cell in next update cycle
+    focused_pos: Option<Vec2>,
+    pub camera_zoom: Vec2,
+    // size of render target
     habitat_size: (u32, u32),
     pub cells: Vec<Cell>,
     flow_field: NoiseFlowField,
+    // holds the generated flow field values
     flow_field_buffer: Vec<Vec2>,
     pub draw_flow_field_bool: bool,
+    pub scale_collision_force: bool,
 }
 
 impl Habitat {
@@ -30,27 +38,29 @@ impl Habitat {
         Self {
             render_target,
             camera_target: Vec2::new(habitat_size.0 as f32/2f32, habitat_size.1 as f32/2f32),
+            focused_cell_idx: None,
+            focused_pos: None,
             camera_zoom,
             habitat_size,
             cells: Vec::new(),
             flow_field: NoiseFlowField::new((habitat_size.0/30) as usize, (habitat_size.1/30) as usize, 10f32, 0.003, 1),
             flow_field_buffer: Vec::new(),
             draw_flow_field_bool: false,
+            scale_collision_force: true,
         }
     }
 
     pub fn get_size(&self) -> (u32, u32) {
         self.habitat_size
     }
+    pub fn set_z_offset(&mut self, new_z: f32) {
+        self.flow_field.set_z_step_size(new_z);
+    }
 
     pub fn draw(&mut self) {
         // set camera to draw on own render target
-        set_camera(&Camera2D {
-            zoom: self.camera_zoom,
-            target: self.camera_target,
-            render_target: Some(self.render_target.clone()),
-            ..Default::default()
-        });
+        let camera= self.get_camera();
+        set_camera(&camera);
 
         clear_background(BLACK);
         draw_rectangle(0f32, 0f32, self.habitat_size.0 as f32, self.habitat_size.1 as f32, BLUE);
@@ -69,7 +79,32 @@ impl Habitat {
         set_default_camera();
     }
 
-    pub fn update(&mut self, frame_id: Wrapping<usize>) {
+    pub fn update(&mut self, frame_id: Wrapping<usize>, flow_field_val: f32, collision_iterations: usize) {
+        // set focused cell
+        if let Some(pos) = self.focused_pos {
+            let mut found_cell = false;
+            for (idx, cell) in self.cells.iter().enumerate() {
+                if pos.distance(cell.pos) < cell.size {
+                    self.focused_cell_idx = Some(idx);
+                    self.focused_pos = None;
+                    found_cell = true;
+                    break
+                }
+            }
+            if !found_cell {
+                self.focused_cell_idx = None;
+                if let Some(idx) = self.focused_cell_idx {
+                    self.camera_target = self.cells[idx].pos;
+                }
+                self.focused_pos = None;
+
+            }
+        }
+        if let Some(cell_idx) = self.focused_cell_idx {
+            self.camera_target = self.cells[cell_idx].pos;
+        }
+
+
         // update flow field
         if frame_id % Wrapping(10) == Wrapping(0) {
             self.flow_field_buffer = self.flow_field.get_next().clone();
@@ -78,7 +113,7 @@ impl Habitat {
         // update velocity
         for cell in self.cells.iter_mut() {
             let (rel_x, rel_y) = (cell.pos.x/self.habitat_size.0 as f32, cell.pos.y/self.habitat_size.1 as f32);
-            cell.vel = cell.vel*0.9 + self.flow_field.get_pos(rel_x, rel_y) * 0.01;
+            cell.vel = cell.vel*0.9 + self.flow_field.get_pos(rel_x, rel_y) * flow_field_val;
 
         }
         // apply velocity
@@ -86,8 +121,14 @@ impl Habitat {
             cell.pos += cell.vel
         }
 
+        for _ in 0..collision_iterations {
+            self.apply_collision()
+        }
+    }
+
+    pub fn apply_collision(&mut self) {
         // populate the r*-tree to minimize collision checks
-        let mut r_tree = RTree::bulk_load(self.cells.iter().collect());
+        let r_tree = RTree::bulk_load(self.cells.iter().collect());
 
         // collision checks between cells
         let mut collision_update: Vec<Vec2> = vec![Vec2::ZERO; self.cells.len()];
@@ -104,34 +145,32 @@ impl Habitat {
                 }
             }
         }
+
         // check boundary breaks, then apply collision update
         for (idx, cell) in self.cells.iter_mut().enumerate() {
-            let new_pos = cell.pos + collision_update[idx] / (collision_counter[idx] as f32).max(1f32);
+            let new_pos = if self.scale_collision_force {cell.pos + collision_update[idx] / (collision_counter[idx] as f32).max(1f32)} else {cell.pos + collision_update[idx]};
+
             match new_pos {
                 _ if new_pos.x < 0f32 + cell.size => {
                     cell.pos.x = cell.size;
                     cell.pos.y = new_pos.y;
                 }
-                _ => {}
+                _ if new_pos.x > self.habitat_size.0 as f32 - cell.size => {
+                    cell.pos.x = self.habitat_size.0 as f32 - cell.size;
+                    cell.pos.y = new_pos.y;
+                }
+                _ if cell.pos.y < 0f32 + cell.size => {
+                    cell.pos.x = new_pos.x;
+                    cell.pos.y = 0f32 + cell.size;
+                }
+                _ if cell.pos.y > self.habitat_size.1 as f32 - cell.size => {
+                    cell.pos.x = new_pos.x;
+                    cell.pos.y = self.habitat_size.1 as f32 - cell.size;
+                }
+                _ => {
+                    cell.pos = new_pos;
+                }
             }
-            if cell.pos.x < 0f32 + cell.size {
-                cell.pos.x = cell.size;
-                collision_update[idx].x = collision_update[idx].x.max(0f32)
-            }
-            if cell.pos.x > self.habitat_size.0 as f32-cell.size {
-                cell.pos.x = self.habitat_size.0 as f32-cell.size;
-                collision_update[idx].x = collision_update[idx].x.min(0f32)
-            }
-            if cell.pos.y < 0f32 + cell.size {
-                cell.pos.y = 0f32 + cell.size;
-                collision_update[idx].y = collision_update[idx].y.max(0f32)
-            }
-            if cell.pos.y > self.habitat_size.1 as f32 - cell.size {
-                cell.pos.y = self.habitat_size.1 as f32-cell.size;
-                collision_update[idx].y = collision_update[idx].y.min(0f32)
-            }
-            // collision update applied here
-            cell.pos += collision_update[idx] / (collision_counter[idx] as f32).max(1f32);
         }
     }
 
@@ -139,7 +178,17 @@ impl Habitat {
         &self.render_target.texture
     }
 
+    fn get_camera(&self) -> Camera2D {
+        Camera2D {
+            zoom: self.camera_zoom,
+            target: self.camera_target,
+            render_target: Some(self.render_target.clone()),
+            ..Default::default()
+        }
+    }
+
     pub fn move_target(&mut self, direction: Vec2) {
+        self.focused_cell_idx = None;
         self.camera_target += direction * (0.1f32/self.camera_zoom.length());
         if self.camera_target.x < 0f32 {self.camera_target.x = 0f32}
         if self.camera_target.x > self.habitat_size.0 as f32 { self.camera_target.x = self.habitat_size.0 as f32}
@@ -171,5 +220,8 @@ impl Habitat {
                           BLACK);
             }
         }
+    }
+    pub fn set_focused_cell(&mut self, canvas_pos: Option<Vec2>) {
+        self.focused_pos = canvas_pos;
     }
 }

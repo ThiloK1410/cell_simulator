@@ -12,10 +12,12 @@ impl Cell {
         Self {
             pos,
             size,
-            vel: Vec2::default()
+            vel: Vec2::ZERO,
         }
     }
 }
+
+// trait implementations so that Cells can be used in RTrees
 impl RTreeObject for &Cell {
     type Envelope = AABB<(f32, f32)>;
 
